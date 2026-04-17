@@ -12,14 +12,17 @@ import {
   History,
   Star,
   FileText,
-  Loader2
+  Loader2,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AdSense from '../components/AdSense';
 import { cn } from '../lib/utils';
+import PdfUploadModal from '../components/PdfUploadModal';
 
 export default function InterviewPrep({ user }) {
   const [loading, setLoading] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const [resumes, setResumes] = useState([]);
   const [selectedResumeId, setSelectedResumeId] = useState('');
   const [step, setStep] = useState('setup');
@@ -61,7 +64,7 @@ export default function InterviewPrep({ user }) {
         Return ONLY a JSON array of strings.
       `;
       
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
@@ -85,7 +88,7 @@ export default function InterviewPrep({ user }) {
   const getFeedback = async () => {
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const prompt = `
         Analyze the following interview responses and provide feedback.
         For each question and answer pair, provide a strength and an area for improvement.
@@ -132,8 +135,21 @@ export default function InterviewPrep({ user }) {
     }
   };
 
+  const handlePdfParsed = (data) => {
+    if (data._id) {
+      setResumes(prev => [data, ...prev]);
+      setSelectedResumeId(data._id);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
+      <PdfUploadModal 
+        isOpen={showPdfModal} 
+        onClose={() => setShowPdfModal(false)} 
+        onParsed={handlePdfParsed}
+        userId={user.id}
+      />
       <header className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
@@ -161,24 +177,41 @@ export default function InterviewPrep({ user }) {
                 </h2>
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wider">Select Resume (for context)</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider">Select Resume (for context)</label>
+                      <button 
+                        onClick={() => setShowPdfModal(true)}
+                        className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                      >
+                        <Upload size={14} />
+                        Upload Resume PDF
+                      </button>
+                    </div>
                     <div className="grid gap-3">
                       {resumes.map(resume => (
                         <button
                           key={resume._id}
                           onClick={() => setSelectedResumeId(resume._id)}
                           className={cn(
-                            "p-4 rounded-xl border-2 transition-all text-left flex items-center justify-between group",
+                            "p-4 rounded-xl border-2 transition-all text-left flex items-center gap-4 group",
                             selectedResumeId === resume._id 
                               ? "border-blue-600 bg-blue-50" 
                               : "border-slate-100 hover:border-slate-200"
                           )}
                         >
-                          <div>
-                            <p className="font-bold text-slate-900">{resume.name}</p>
-                            <p className="text-xs text-slate-500">{resume.title}</p>
+                          <div className={cn(
+                            "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+                            selectedResumeId === resume._id 
+                              ? "bg-white" 
+                              : resume.pdfUrl ? "bg-red-50 text-red-600" : "bg-slate-50 text-slate-400"
+                          )}>
+                            <FileText size={20} />
                           </div>
-                          {selectedResumeId === resume._id && <CheckCircle2 className="text-blue-600" size={20} />}
+                          <div className="flex-1 overflow-hidden">
+                            <p className="font-bold text-slate-900 truncate">{resume.name}</p>
+                            <p className="text-xs text-slate-500 truncate">{resume.title}</p>
+                          </div>
+                          {selectedResumeId === resume._id && <CheckCircle2 className="text-blue-600 shrink-0" size={20} />}
                         </button>
                       ))}
                       {resumes.length === 0 && (

@@ -42,7 +42,7 @@ const upload = multer({ storage });
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   app.use(cors());
   app.use(express.json());
@@ -240,8 +240,8 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // Image Upload Route
-  app.post("/api/resumes/:id/upload", authenticate, upload.single('image'), async (req, res) => {
+  // File Upload Route (Images or PDFs)
+  app.post("/api/resumes/:id/upload", authenticate, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -256,17 +256,25 @@ async function startServer() {
         resource_type: "auto"
       });
 
+      const updateData = { lastUpdated: new Date() };
+      
+      if (req.file.mimetype === "application/pdf") {
+        updateData.pdfUrl = result.secure_url;
+      } else {
+        updateData.previewImage = result.secure_url;
+      }
+
       // Update Resume with Cloudinary URL
       const resume = await Resume.findOneAndUpdate(
         { _id: req.params.id, userId: req.userId },
-        { previewImage: result.secure_url, lastUpdated: new Date() },
+        updateData,
         { new: true }
       );
 
       res.json(resume);
     } catch (err) {
       console.error("Upload error:", err);
-      res.status(500).json({ error: "Failed to upload image" });
+      res.status(500).json({ error: "Failed to upload file" });
     }
   });
 

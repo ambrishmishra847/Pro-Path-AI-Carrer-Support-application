@@ -54,6 +54,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { SECTION_TYPES, TEMPLATES } from '../constants';
 import ResumePreviewSection from '../components/ResumePreviewSection';
 import { generatePortfolioHtml } from '../lib/portfolio-template';
+import PdfUploadModal from '../components/PdfUploadModal';
 
 // Initialize PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -67,6 +68,7 @@ export default function ResumeBuilder({ user }) {
   const [loading, setLoading] = useState(!!id);
   const [saving, setSaving] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const [view, setView] = useState('editor');
   const [portfolioTemplate, setPortfolioTemplate] = useState('modern');
   const [portfolioAccentColor, setPortfolioAccentColor] = useState('#2563eb');
@@ -99,7 +101,7 @@ export default function ResumeBuilder({ user }) {
     
     setSaving(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const promptText = `Translate the following resume data into ${lang}. Keep the same JSON structure. Return ONLY the JSON.
       Resume Data: ${JSON.stringify(resume)}`;
       
@@ -296,7 +298,7 @@ export default function ResumeBuilder({ user }) {
 
   const generateSummary = async () => {
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const prompt = `Write a professional resume summary for a ${resume.title || 'professional'}. My skills include: ${resume.sections.find(s => s.type === 'skills')?.content || ''}. Keep it 2-3 sentences.`;
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -327,7 +329,7 @@ export default function ResumeBuilder({ user }) {
     setIsAiThinking(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const systemInstruction = "You are a professional resume expert and career coach. Help the user build a high-quality resume. You have access to their current resume data. Provide specific, actionable advice. If they ask to rewrite a section, provide the improved text.";
       const context = `Current Resume Data: ${JSON.stringify(resume)}`;
       
@@ -356,7 +358,7 @@ export default function ResumeBuilder({ user }) {
 
     setIsAiThinking(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const prompt = `Rewrite the following ${field} for a resume to be more professional and impact-oriented. Use action verbs and quantify achievements if possible. Keep it concise.\n\nOriginal: ${item[field]}`;
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -373,76 +375,33 @@ export default function ResumeBuilder({ user }) {
     }
   };
 
-  const extractTextFromPdf = async (file) => {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let text = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      const strings = content.items
-        .filter((item) => 'str' in item)
-        .map((item) => item.str);
-      text += strings.join(' ') + '\n';
+  const handlePdfParsed = (data) => {
+    // If it's a new resume object (from save), we might want to navigate to it
+    // but usually in builder we just want to load the data into the current editor
+    if (data._id) {
+       navigate(`/builder/${data._id}`);
+       return;
     }
-    return text;
-  };
 
-  const handlePdfUpload = async (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setParsing(true);
-      try {
-        const text = await extractTextFromPdf(file);
-        const prompt = `
-          Extract information from the following resume text and format it into a structured JSON object.
-          The JSON should match this structure:
-          {
-            "name": "Resume Name",
-            "title": "Professional Title",
-            "email": "Email",
-            "phone": "Phone",
-            "location": "Location",
-            "summary": "Professional Summary",
-            "sections": [
-              { "id": "experience", "title": "Work Experience", "type": "experience", "items": [{ "title": "", "company": "", "period": "", "description": "" }] },
-              { "id": "education", "title": "Education", "type": "education", "items": [{ "degree": "", "school": "", "year": "" }] },
-              { "id": "skills", "title": "Skills", "type": "skills", "content": "comma separated skills" },
-              { "id": "projects", "title": "Projects", "type": "projects", "items": [{ "name": "", "link": "", "description": "" }] }
-            ]
-          }
-          
-          Resume Text:
-          ${text}
-        `;
-
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: prompt,
-        });
-
-        const parsedData = JSON.parse(response.text.replace(/```json|```/g, ''));
-        setResume(prev => ({
-          ...prev,
-          ...parsedData,
-          uid: user.id,
-          lastUpdated: new Date().toISOString()
-        }));
-        alert('Resume parsed successfully!');
-      } catch (err) {
-        console.error("PDF Parsing failed:", err);
-        alert('Failed to parse PDF. Please try manual entry.');
-      } finally {
-        setParsing(false);
-      }
-    }
+    setResume(prev => ({
+      ...prev,
+      ...data,
+      uid: user.id,
+      lastUpdated: new Date().toISOString()
+    }));
+    alert('Resume data imported to editor!');
   };
 
   if (loading) return <div className="flex items-center justify-center h-96"><Loader2 className="animate-spin text-blue-600" size={48} /></div>;
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <PdfUploadModal 
+        isOpen={showPdfModal} 
+        onClose={() => setShowPdfModal(false)} 
+        onParsed={handlePdfParsed}
+        userId={user.id}
+      />
       {/* Toolbar */}
       <div className="bg-white border-b border-slate-200 sticky top-16 z-40 px-4 py-3">
         <div className="container mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -461,13 +420,11 @@ export default function ResumeBuilder({ user }) {
           </div>
           <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={parsing}
+              onClick={() => setShowPdfModal(true)}
               className="px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-all flex items-center gap-2 shrink-0"
             >
-              {parsing ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
+              <Upload size={18} />
               Import PDF
-              <input type="file" ref={fileInputRef} onChange={handlePdfUpload} accept=".pdf" className="hidden" />
             </button>
             <button
               onClick={() => setView(view === 'portfolio' ? 'editor' : 'portfolio')}

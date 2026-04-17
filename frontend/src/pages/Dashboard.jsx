@@ -27,11 +27,14 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AdSense from '../components/AdSense';
+import PdfUploadModal from '../components/PdfUploadModal';
+import { cn } from '../lib/utils';
 
 export default function Dashboard({ user }) {
   const [resumes, setResumes] = useState([]);
   const [coverLetters, setCoverLetters] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, type: 'resume', id: null });
   const navigate = useNavigate();
 
@@ -92,19 +95,33 @@ export default function Dashboard({ user }) {
     }
   };
 
-  const handleImageUpload = async (resumeId, file) => {
+  const handleFileUpload = async (resumeId, file) => {
     if (!file) return;
     
     try {
-      const updatedResume = await api.resumes.uploadImage(resumeId, file);
+      const formData = new FormData();
+      formData.append('file', file);
+      const updatedResume = await api.resumes.uploadFile(resumeId, formData);
       setResumes(prev => prev.map(r => r._id === resumeId ? updatedResume : r));
     } catch (err) {
-      console.error("Image upload failed:", err);
+      console.error("File upload failed:", err);
+    }
+  };
+
+  const handlePdfParsed = (data) => {
+    if (data._id) {
+      setResumes(prev => [data, ...prev]);
     }
   };
 
   return (
     <div className="container mx-auto px-4 py-12">
+      <PdfUploadModal 
+        isOpen={showPdfModal} 
+        onClose={() => setShowPdfModal(false)} 
+        onParsed={handlePdfParsed}
+        userId={user.id}
+      />
       <header className="mb-12">
         <h1 className="text-3xl font-bold text-slate-900 mb-2">Welcome back, {user.displayName?.split(' ')[0]}!</h1>
         <p className="text-slate-600">Manage your professional documents and optimize your career path.</p>
@@ -119,13 +136,22 @@ export default function Dashboard({ user }) {
                 <FileText className="text-blue-600" />
                 <h2 className="text-xl font-bold text-slate-900">My Resumes</h2>
               </div>
-              <Link
-                to="/builder"
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
-              >
-                <Plus size={18} />
-                Create New Resume
-              </Link>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowPdfModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 border border-blue-200 rounded-lg font-semibold hover:bg-blue-50 transition-all shadow-sm"
+                >
+                  <Upload size={18} />
+                  Import PDF
+                </button>
+                <Link
+                  to="/builder"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                >
+                  <Plus size={18} />
+                  Create New
+                </Link>
+              </div>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4">
@@ -140,21 +166,37 @@ export default function Dashboard({ user }) {
                     className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group"
                   >
                     <div className="flex justify-between items-start mb-4">
-                      <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center overflow-hidden border border-blue-100">
+                      <div className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden border",
+                        resume.pdfUrl ? "bg-red-50 text-red-600 border-red-100" : "bg-blue-50 text-blue-600 border-blue-100"
+                      )}>
                         {resume.previewImage ? (
                           <img src={resume.previewImage} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : resume.pdfUrl ? (
+                          <FileText size={20} />
                         ) : (
                           <FileText size={20} />
                         )}
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {resume.pdfUrl && (
+                          <a 
+                            href={resume.pdfUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                            title="View PDF"
+                          >
+                            <Search size={16} />
+                          </a>
+                        )}
                         <label className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer" title="Replace Preview Image">
                           <Upload size={16} />
                           <input 
                             type="file" 
                             className="hidden" 
                             accept="image/*"
-                            onChange={(e) => handleImageUpload(resume._id, e.target.files[0])}
+                            onChange={(e) => handleFileUpload(resume._id, e.target.files[0])}
                           />
                         </label>
                         <button

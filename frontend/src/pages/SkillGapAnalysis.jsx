@@ -14,14 +14,17 @@ import {
   ChevronRight,
   Sparkles,
   FileText,
-  Loader2
+  Loader2,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AdSense from '../components/AdSense';
 import { cn } from '../lib/utils';
+import PdfUploadModal from '../components/PdfUploadModal';
 
 export default function SkillGapAnalysis({ user }) {
   const [loading, setLoading] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const [resumes, setResumes] = useState([]);
   const [selectedResumeId, setSelectedResumeId] = useState('');
   const [resumeText, setResumeText] = useState('');
@@ -74,7 +77,7 @@ export default function SkillGapAnalysis({ user }) {
         Return ONLY the JSON.
       `;
       
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
@@ -89,8 +92,26 @@ export default function SkillGapAnalysis({ user }) {
     }
   };
 
+  const handlePdfParsed = (data) => {
+    if (data._id) {
+      setResumes(prev => [data, ...prev]);
+      setSelectedResumeId(data._id);
+    } else {
+      const skills = data.sections.find(s => s.type === 'skills')?.content || '';
+      const summary = data.summary || '';
+      const experience = data.sections.find(s => s.type === 'experience')?.items?.map((i) => `${i.title} at ${i.company}`).join(', ') || '';
+      setResumeText(`${summary}\n\nSkills: ${skills}\n\nExperience: ${experience}`);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
+      <PdfUploadModal 
+        isOpen={showPdfModal} 
+        onClose={() => setShowPdfModal(false)} 
+        onParsed={handlePdfParsed}
+        userId={user.id}
+      />
       <header className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-500/20">
@@ -106,26 +127,48 @@ export default function SkillGapAnalysis({ user }) {
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
             <div className="space-y-6">
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Select Saved Resume (Optional)</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Select Saved Resume (Optional)</label>
+                  <button 
+                    onClick={() => setShowPdfModal(true)}
+                    className="text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1"
+                  >
+                    <Upload size={14} />
+                    Upload Resume PDF
+                  </button>
+                </div>
                 <div className="grid sm:grid-cols-2 gap-3 mb-4">
                   {resumes.map(resume => (
                     <button
                       key={resume._id}
                       onClick={() => setSelectedResumeId(resume._id)}
                       className={cn(
-                        "p-3 rounded-xl border-2 transition-all text-left flex items-center justify-between group",
+                        "p-3 rounded-xl border-2 transition-all text-left flex items-center gap-3 group",
                         selectedResumeId === resume._id 
                           ? "border-purple-600 bg-purple-50" 
                           : "border-slate-100 hover:border-slate-200"
                       )}
                     >
-                      <div className="truncate pr-2">
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                        selectedResumeId === resume._id 
+                          ? "bg-white" 
+                          : resume.pdfUrl ? "bg-red-50 text-red-600" : "bg-slate-50 text-slate-400"
+                      )}>
+                        <FileText size={16} />
+                      </div>
+                      <div className="flex-1 truncate">
                         <p className="font-bold text-slate-900 text-sm truncate">{resume.name}</p>
                         <p className="text-[10px] text-slate-500 truncate">{resume.title}</p>
                       </div>
                       {selectedResumeId === resume._id && <CheckCircle2 className="text-purple-600 shrink-0" size={16} />}
                     </button>
                   ))}
+                  {resumes.length === 0 && (
+                    <div className="sm:col-span-2 p-4 text-center border-2 border-dashed border-slate-100 rounded-xl">
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">No Resumes Found. Upload one above!</p>
+                    </div>
+                  )}
                 </div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Or Paste Resume Content</label>
                 <textarea

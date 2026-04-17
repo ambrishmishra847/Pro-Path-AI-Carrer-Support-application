@@ -141,10 +141,13 @@ export const api = {
       });
       return res.json();
     },
-    uploadImage: async (id, file) => {
+    uploadFile: async (id, formData) => {
       const guestUser = localStorage.getItem('guestUser');
       if (guestUser) {
-        // For guest users, we still use base64 in localStorage
+        // For guest users, we still use base64 in localStorage (if it's an image)
+        const file = formData.get('file') || formData.get('image');
+        if (!file) return null;
+        
         return new Promise((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => {
@@ -152,7 +155,11 @@ export const api = {
             const resumes = resumesStr ? decompress(resumesStr) : [];
             const index = resumes.findIndex((r) => r._id === id);
             if (index !== -1) {
-              resumes[index].previewImage = reader.result;
+              if (file.type.startsWith('image/')) {
+                resumes[index].previewImage = reader.result;
+              } else {
+                resumes[index].pdfUrl = reader.result; // Simplified for guest
+              }
               localStorage.setItem('guest_resumes', compress(resumes));
             }
             resolve(resumes[index]);
@@ -160,9 +167,6 @@ export const api = {
           reader.readAsDataURL(file);
         });
       }
-
-      const formData = new FormData();
-      formData.append('image', file);
 
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/resumes/${id}/upload`, {
